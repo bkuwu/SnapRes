@@ -3,12 +3,11 @@ SnapRes - Competitive Resolution Switcher
 Coded by bku
 
 Fonts:
-    Put your Nunito .ttf files in a "fonts" folder next to this script:
-        fonts/Nunito-Black.ttf
-        fonts/Nunito-Light.ttf
-    (Nunito is free/open at fonts.google.com/specimen/Nunito if you don't
-    already have the files.) These are loaded as PRIVATE fonts at runtime
-    via ctypes, so end users do NOT need Nunito installed on their PC.
+    Put your font .ttf files in a "fonts" folder next to this script:
+        fonts/yourfonttype1.ttf
+        fonts/yourfonttype2.ttf
+    These are loaded as PRIVATE fonts at runtime
+    via ctypes, so end users do NOT need your font installed on their PC.
     If the filenames you have differ, just update FONT_FILES below.
 
 Build:
@@ -125,6 +124,13 @@ THEMES = {
         glow_rgba=(15, 15, 15, 24),
         status_ok="#2f6f4f",
         status_bad="#8a2f2f",
+        # Idle chip is a light gray; hovering inverts to a dark chip with
+        # light text, so the hover is a clear reversal, not a wash-out
+        # against the already-light background.
+        btn_idle=GRAY_300,
+        btn_hover=GRAY_900,
+        btn_text=GRAY_900,
+        btn_hover_text=WHITE,
     ),
     "dark": dict(
         bg=GRAY_900,
@@ -137,10 +143,17 @@ THEMES = {
         glow_rgba=(255, 255, 255, 30),
         status_ok="#7fe3ac",
         status_bad="#ff8a8a",
+        # Idle chip is a light gray on the dark background; hovering
+        # brightens it to white, which already reads as a clear highlight.
+        btn_idle=GRAY_300,
+        btn_hover=WHITE,
+        btn_text=GRAY_900,
+        btn_hover_text=GRAY_900,
     ),
 }
 
-# Buttons
+# Fallback defaults (used only if a HoverButton is ever built without
+# theme colors passed in explicitly).
 BUTTON_IDLE = GRAY_300
 BUTTON_HOVER = WHITE
 BUTTON_TEXT = GRAY_900
@@ -398,6 +411,101 @@ def _ease_out(t):
 
 
 # ---------------------------------------------------------------------------
+# Theme-toggle icons (drawn, not loaded from files)
+# ---------------------------------------------------------------------------
+# Both are rendered at 4x then downsampled with LANCZOS for clean anti-
+# aliased edges, on a fully transparent canvas so they drop straight onto
+# whatever background is behind the button - no chip, no re-theming needed
+# later when the background changes.
+
+def _draw_moon_icon(size, rgb):
+    """Crescent moon - shown while in light mode, to switch to dark.
+    Colored with the current theme's text color so it's always legible
+    against the panel/background it's sitting on."""
+    scale = 4
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    r = s * 0.34
+    cx, cy = s * 0.52, s * 0.50
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*rgb, 255))
+
+    # "Cut" a second, offset circle out of the first using a fully
+    # transparent fill - this carves out the crescent shape.
+    cut_r = r * 0.86
+    cut_cx = cx + r * 0.62
+    cut_cy = cy - r * 0.30
+    d.ellipse(
+        [cut_cx - cut_r, cut_cy - cut_r, cut_cx + cut_r, cut_cy + cut_r],
+        fill=(0, 0, 0, 0),
+    )
+
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def _draw_glow_icon(size, rgb=(255, 255, 255)):
+    """Soft glowing circle - shown while in dark mode, to switch to
+    light. Reuses the same soft glow already used behind the header logo,
+    so it reads as part of the app's existing visual language."""
+    scale = 4
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cx, cy = s / 2, s / 2
+
+    for rad, alpha in ((0.50, 35), (0.40, 65), (0.30, 110)):
+        r = s * rad
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*rgb, alpha))
+
+    r_core = s * 0.20
+    d.ellipse(
+        [cx - r_core, cy - r_core, cx + r_core, cy + r_core],
+        fill=(*rgb, 255),
+    )
+
+    img = img.filter(ImageFilter.GaussianBlur(s * 0.015))
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def _scale_alpha(img, factor):
+    """Scale only the alpha channel of an RGBA image by `factor` (0-1),
+    leaving every RGB value untouched. Used to fade the hover halo in/out
+    without any hue shift or color interpolation along the way."""
+    if factor >= 0.999:
+        return img
+    if factor <= 0.001:
+        return Image.new("RGBA", img.size, (0, 0, 0, 0))
+    r, g, b, a = img.split()
+    a = a.point(lambda v: int(v * factor))
+    return Image.merge("RGBA", (r, g, b, a))
+
+
+def _draw_halo(canvas_size, rgb, max_alpha=100):
+    """Soft radial glow used behind the theme-toggle icon on hover - a
+    'selected' halo. Built once at full opacity per icon color; faded in
+    and out afterward purely via _scale_alpha, so the color never shifts
+    mid-animation, only its strength."""
+    scale = 3
+    s = canvas_size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cx = cy = s / 2
+
+    steps = 24
+    for i in range(steps, 0, -1):
+        t = i / steps
+        r = (s * 0.46) * t
+        alpha = int(max_alpha * (1 - t) ** 1.6)
+        if alpha <= 0:
+            continue
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*rgb, alpha))
+
+    img = img.filter(ImageFilter.GaussianBlur(s * 0.02))
+    return img.resize((canvas_size, canvas_size), Image.LANCZOS)
+
+
+# ---------------------------------------------------------------------------
 # Hover button
 # ---------------------------------------------------------------------------
 
@@ -502,6 +610,99 @@ class HoverButton(ctk.CTkFrame):
                 self._anim_job = None
 
         step()
+
+
+# ---------------------------------------------------------------------------
+# Icon toggle button (chip-free)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Icon toggle button (chip-free, with a real hover "select" effect)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Icon toggle button (chip-free, with a real hover "select" effect)
+# ---------------------------------------------------------------------------
+# Drawn directly onto the header's own Canvas via create_image/tag_bind -
+# the same technique already used for the logo, glow, and the clickable
+# credit line just above it. A CTkButton was tried first, but CTkButton
+# renders its image through an internal child Label that fully covers the
+# button; Tkinter's <Enter>/<Leave> only fire on whatever widget is
+# directly under the cursor, so those events landed on that hidden child
+# instead of the button we bound - the animation never ran. A single
+# canvas item has no children to steal the event, so hover is reliable.
+
+class IconToggleAnimator:
+    """Owns the hover animation state for a canvas-drawn toggle icon:
+    zooms the icon up and fades in a soft halo behind it. Both effects
+    are pure resize / alpha-channel scaling - never color blending - so
+    nothing shifts hue or flickers mid-animation."""
+
+    def __init__(self, canvas, item_id, icon_builder, icon_rgb,
+                 size=44, hover_grow=12, halo_alpha=110,
+                 steps=10, interval=12):
+        self.canvas = canvas
+        self.item_id = item_id
+        self._base_icon = size
+        self._hover_icon = size + hover_grow
+        self._canvas_size = int(self._hover_icon * 1.9)
+        self._steps, self._interval = steps, interval
+        self._t = 0.0
+        self._anim_job = None
+        self._photo = None  # keep a reference alive - Tk drops GC'd images
+
+        # Both rendered once at the larger (hover) resolution - every
+        # animation frame just resizes/alpha-scales these masters rather
+        # than redrawing, so frames stay cheap and consistent.
+        self._icon_master = icon_builder(self._hover_icon, icon_rgb)
+        self._halo_master = _draw_halo(self._canvas_size, icon_rgb, max_alpha=halo_alpha)
+
+        self.render(0.0)
+
+    @property
+    def canvas_size(self):
+        return self._canvas_size
+
+    def on_enter(self, _e=None):
+        self._animate(1.0)
+
+    def on_leave(self, _e=None):
+        self._animate(0.0)
+
+    def _animate(self, target_t):
+        if self._anim_job:
+            self.canvas.after_cancel(self._anim_job)
+            self._anim_job = None
+        start_t = self._t
+
+        def step(i=0):
+            eased = _ease_out(i / self._steps)
+            self.render(start_t + (target_t - start_t) * eased)
+            if i < self._steps:
+                self._anim_job = self.canvas.after(self._interval, lambda: step(i + 1))
+            else:
+                self._anim_job = None
+
+        step()
+
+    def render(self, t):
+        t = max(0.0, min(1.0, t))
+        self._t = t
+
+        icon_size = max(1, int(self._base_icon + (self._hover_icon - self._base_icon) * t))
+        icon_frame = self._icon_master.resize((icon_size, icon_size), Image.LANCZOS)
+        halo_frame = _scale_alpha(self._halo_master, t)
+
+        composite = Image.new("RGBA", (self._canvas_size, self._canvas_size), (0, 0, 0, 0))
+        composite.alpha_composite(halo_frame, (0, 0))
+        off = (self._canvas_size - icon_size) // 2
+        composite.alpha_composite(icon_frame, (off, off))
+
+        self._photo = ImageTk.PhotoImage(composite)
+        try:
+            self.canvas.itemconfig(self.item_id, image=self._photo)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -706,18 +907,43 @@ class ResSwitcherApp(ctk.CTk):
         setup_btn = HoverButton(
             c, text="Setup", command=self.show_setup,
             width=128, height=38, corner_radius=11, font=FT(12),
+            fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+            text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
             blend_color=C["bg"], grow=5,
         )
         c.create_window(WIN_W / 2, setup_label_y + 46, window=setup_btn, anchor="center", tags="header")
 
-        # Theme toggle
-        toggle_label = "Dark Mode" if self.mode == "light" else "Light Mode"
-        toggle_btn = HoverButton(
-            c, text=toggle_label, command=self._toggle_theme,
-            width=112, height=34, corner_radius=10, font=FT(11),
-            blend_color=C["bg"], grow=4,
+        # Theme toggle - a moon while in light mode (switches to dark), a
+        # glowing circle while in dark mode (switches to light). Drawn
+        # straight on this canvas (like the logo/glow above), so hover
+        # zoom + halo glow reliably fires instead of getting swallowed by
+        # a child widget.
+        icon_size = 40
+        if self.mode == "light":
+            icon_builder = _draw_moon_icon
+            icon_rgb = _hex_to_rgb(C["text_main"])
+        else:
+            icon_builder = _draw_glow_icon
+            icon_rgb = (255, 255, 255)
+
+        toggle_item = c.create_image(20, 20, anchor="nw", tags="header")
+        toggle_anim = IconToggleAnimator(
+            c, toggle_item, icon_builder, icon_rgb,
+            size=icon_size, hover_grow=12, halo_alpha=110,
         )
-        c.create_window(20, 22, window=toggle_btn, anchor="nw", tags="header")
+        self._theme_toggle_anim = toggle_anim  # keep alive - holds the PhotoImage refs
+
+        def _toggle_enter(_e):
+            c.config(cursor="hand2")
+            toggle_anim.on_enter()
+
+        def _toggle_leave(_e):
+            c.config(cursor="")
+            toggle_anim.on_leave()
+
+        c.tag_bind(toggle_item, "<Enter>", _toggle_enter)
+        c.tag_bind(toggle_item, "<Leave>", _toggle_leave)
+        c.tag_bind(toggle_item, "<Button-1>", lambda e: self._toggle_theme())
 
     def _build_content_frame(self):
         C = self.C
@@ -776,6 +1002,8 @@ class ResSwitcherApp(ctk.CTk):
             HoverButton(
                 grid, text=label, width=165, height=52,
                 corner_radius=14, font=FT(13),
+                fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+                text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
                 blend_color=C["panel"], grow=6,
                 command=lambda w=width, h=height: self.apply_resolution(w, h),
             ).grid(row=r, column=c, padx=9, pady=9)
@@ -819,6 +1047,8 @@ class ResSwitcherApp(ctk.CTk):
         HoverButton(
             row, text="Apply", command=self.apply_custom,
             width=92, height=48, corner_radius=14, font=FT(13),
+            fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+            text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
             blend_color=C["panel"], grow=4,
         ).pack(side="left", padx=(12, 0))
 
@@ -883,6 +1113,8 @@ class ResSwitcherApp(ctk.CTk):
             HoverButton(
                 footer, text=label, command=cmd,
                 width=108, height=38, corner_radius=11, font=FT(12),
+                fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+                text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
                 blend_color=C["bg"], grow=5,
             ).pack(side="left", padx=6)
 
@@ -1017,11 +1249,15 @@ class ResSwitcherApp(ctk.CTk):
             HoverButton(
                 links_row, text="YouTube", command=lambda: webbrowser.open(YOUTUBE_URL),
                 width=110, height=40, corner_radius=12, font=FT(12),
+                fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+                text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
                 blend_color=C["bg"], grow=4,
             ).pack(side="left", padx=(0, 10))
             HoverButton(
                 links_row, text="GitHub", command=lambda: webbrowser.open(GITHUB_URL),
                 width=110, height=40, corner_radius=12, font=FT(12),
+                fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+                text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
                 blend_color=C["bg"], grow=4,
             ).pack(side="left")
 

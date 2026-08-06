@@ -5,7 +5,7 @@ a = Analysis(
     ['SnapRes.py'],
     pathex=[],
     binaries=[],
-    datas=[('Logo_Main.ico', '.'), ('Logo_Main.png', '.'), ('Logo_Dark.png', '.'), ('fonts', 'fonts')],
+    datas=[('Logo_Main.ico', '.'), ('logo_main.png', '.'), ('logo_dark.png', '.'), ('fonts', 'fonts')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

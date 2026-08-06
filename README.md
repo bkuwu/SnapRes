@@ -10,7 +10,9 @@
 
 SnapRes is a one-click resolution switcher built for Valorant players who run stretched res. Pick a resolution, it applies instantly, done. No digging through Windows display settings mid-session.
 
-![SnapRes screenshot](assets/screenshot_main.png)
+| Dark Mode | Light Mode |
+|---|---|
+| ![SnapRes dark mode](assets/screenshot_main.png) | ![SnapRes light mode](assets/screenshot_light.png) |
 
 ---
 

@@ -22,7 +22,7 @@ Stretched res players know the drill: alt-tab out, open Windows display settings
 
 - Switch between common true stretch resolutions (1920x1440, 1440x1080, 1600x1080, 1280x1080, 1280x1024, 1280x960)
 - Revert back to native res (1920x1080, 2560x1440) just as fast
-- Enter any custom resolution of your own if the presets don't cover it
+- Enter any custom resolution of your own if the presets don't cover it, and save it as a profile so it's one click away next time
 - Light mode / dark mode
 - No account, no ads, no background process running when you're not using it
 

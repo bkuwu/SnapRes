@@ -1,39 +1,3 @@
-"""
-SnapRes - Competitive Resolution Switcher
-Coded by bku
-
-Fonts:
-    Put your font .ttf files in a "fonts" folder next to this script:
-        fonts/yourfonttype1.ttf
-        fonts/yourfonttype2.ttf
-    These are loaded as PRIVATE fonts at runtime
-    via ctypes, so end users do NOT need your font installed on their PC.
-    If the filenames you have differ, just update FONT_FILES below.
-
-Build:
-    pip install customtkinter pillow pyinstaller
-    python -m PyInstaller --onedir --noconsole --noupx --icon=Logo_Main.ico --add-data "Logo_Main.ico;." --add-data "logo_main.png;." --add-data "logo_dark.png;." --add-data "fonts;fonts" --name SnapRes SnapRes.py
-
-    NOTE: run it as "python -m PyInstaller", not the bare "pyinstaller"
-    command - on a lot of setups the pyinstaller.exe script isn't on
-    PATH (or points at a different Python than the one you pip installed
-    into), which is what throws the "pyinstaller is not recognized" /
-    wrong-environment error. "python -m PyInstaller" always uses the
-    same interpreter you just installed it into, so it can't miss.
-
-    Also use --onedir, not --onefile. --onefile re-extracts the whole
-    bundle to a fresh temp "_MEIxxxxxx" folder (under %TEMP%) on EVERY
-    launch, which is what causes the "opens as two processes, no window
-    ever appears" symptom - antivirus treats that fresh temp exe as
-    unseen and scans it before letting it run, especially since this app
-    makes ctypes calls into user32/gdi32 and changes the display
-    resolution directly, which heuristic scanners flag more
-    aggressively. --onedir extracts once at build time instead, and
-    --noupx avoids UPX, which is one of the most common AV false-positive
-    triggers for compressed exes. Ship the whole output folder (zip it)
-    instead of a single exe.
-"""
-
 import os
 import re
 import sys
@@ -46,15 +10,7 @@ import webbrowser
 
 import customtkinter as ctk
 from tkinter import messagebox
-from PIL import Image, ImageTk, ImageDraw, ImageFilter
-
-# ---------------------------------------------------------------------------
-# DPI awareness (must happen before ANY Tk/CTk object is created)
-# ---------------------------------------------------------------------------
-# Without this, Windows silently scales/virtualizes the whole window on
-# displays running >100% zoom (or certain resolution/scaling combos), which
-# is what causes the window to be mis-sized and clipped. Declaring the
-# process as per-monitor DPI aware makes Tkinter see real pixel values.
+from PIL import Image, ImageTk, ImageDraw, ImageFilter, ImageColor
 
 
 def _set_dpi_awareness():
@@ -62,10 +18,10 @@ def _set_dpi_awareness():
         return
     print("SnapRes: setting DPI awareness...", flush=True)
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # per-monitor v2
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
         try:
-            ctypes.windll.user32.SetProcessDPIAware()  # older Windows fallback
+            ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
             pass
     print("SnapRes: DPI awareness done.", flush=True)
@@ -73,38 +29,22 @@ def _set_dpi_awareness():
 
 _set_dpi_awareness()
 
-# customtkinter has its own automatic DPI-awareness/scaling detection built
-# in. Since we already declared DPI awareness ourselves above, we need to
-# tell customtkinter not to also do its own — otherwise, on any monitor
-# running Windows display scaling other than 100%, the two systems fight:
-# CTk widgets (buttons, panels) get scaled/positioned one way, while the
-# header (a raw Tkinter Canvas that doesn't go through CTk's scaling at
-# all) doesn't, and the two drift out of alignment.
 try:
     ctk.deactivate_automatic_dpi_awareness()
 except Exception:
     pass
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
 
 AUTHOR_DISPLAY = "Made by bku"
-VERSION = "1.0.0"
 
 YOUTUBE_URL = "https://www.youtube.com/@bkuuuuu"
+DISCORD_URL = "https://discord.gg/MzX9wJ6Tyf"
 GITHUB_URL = "https://github.com/bkuwu"
 PAYPAL_EMAIL = "saywhatevl@Gmail.com"
 
-# Fonts
-# These are bundled as .ttf files (see FONT_DIR/FONT_FILES below) and loaded
-# as private fonts at runtime, so the user does NOT need them installed.
 FONT_TITLE = "Nunito Black"
 FONT_BODY = "Nunito Light"
 
-# Fallback fonts used only if the bundled .ttf files are missing/fail to
-# load, so the app still looks reasonable instead of falling back to a
-# random default Tk font.
 FONT_TITLE_FALLBACK = "Segoe UI Semibold" if sys.platform == "win32" else "Helvetica"
 FONT_BODY_FALLBACK = "Segoe UI" if sys.platform == "win32" else "Helvetica"
 
@@ -115,9 +55,13 @@ LOGO_MAIN_FILE = "logo_main.png"
 LOGO_DARK_FILE = "logo_dark.png"
 ICON_FILE = "Logo_Main.ico"
 
-# ---------------------------------------------------------------------------
-# Palette
-# ---------------------------------------------------------------------------
+BRAND_ICON_DIR = "icons"
+BRAND_ICON_FILES = {
+    "youtube": "youtube.png",
+    "discord": "discord.png",
+    "github": "github.png",
+}
+
 
 GRAY_900 = "#0F0F0F"
 GRAY_800 = "#1C1C1C"
@@ -143,9 +87,6 @@ THEMES = {
         glow_rgba=(15, 15, 15, 24),
         status_ok="#2f6f4f",
         status_bad="#8a2f2f",
-        # Idle chip is a light gray; hovering inverts to a dark chip with
-        # light text, so the hover is a clear reversal, not a wash-out
-        # against the already-light background.
         btn_idle=GRAY_300,
         btn_hover=GRAY_900,
         btn_text=GRAY_900,
@@ -162,8 +103,6 @@ THEMES = {
         glow_rgba=(255, 255, 255, 30),
         status_ok="#7fe3ac",
         status_bad="#ff8a8a",
-        # Idle chip is a light gray on the dark background; hovering
-        # brightens it to white, which already reads as a clear highlight.
         btn_idle=GRAY_300,
         btn_hover=WHITE,
         btn_text=GRAY_900,
@@ -171,8 +110,6 @@ THEMES = {
     ),
 }
 
-# Fallback defaults (used only if a HoverButton is ever built without
-# theme colors passed in explicitly).
 BUTTON_IDLE = GRAY_300
 BUTTON_HOVER = WHITE
 BUTTON_TEXT = GRAY_900
@@ -190,10 +127,6 @@ def FT(size):
 def FB(size):
     return (FONT_BODY, size)
 
-
-# ---------------------------------------------------------------------------
-# Win32 resolution switching
-# ---------------------------------------------------------------------------
 
 class DEVMODE(ctypes.Structure):
     _fields_ = [
@@ -249,17 +182,12 @@ STRETCH_LIST = [
     ("1280x1080", 1280, 1080),
     ("1280x1024", 1280, 1024),
     ("1280x960", 1280, 960),
-    # A lone 7th entry - _build_res_panel auto-centers an incomplete
-    # last row, so this lands by itself in the middle of row 3.
     ("1568x1080", 1568, 1080),
 ]
 
 REVERT_LIST = [
     ("1920x1080", 1920, 1080),
     ("2560x1440", 2560, 1440),
-    # A lone 3rd entry - _fill_res_grid auto-centers an incomplete last
-    # row, so this lands by itself centered in its own row instead of
-    # hugging the left column.
     ("3840x2160", 3840, 2160),
 ]
 
@@ -351,13 +279,36 @@ def resource_path(relative_path):
     return os.path.join(base, relative_path)
 
 
-# ---------------------------------------------------------------------------
-# Saved custom-resolution profiles (persisted to disk)
-# ---------------------------------------------------------------------------
-# Stored under %APPDATA%\SnapRes\profiles.json so profiles survive a
-# restart even though the app itself may live in a read-only Program
-# Files-style folder. Falls back to the folder next to the exe/script if
-# APPDATA isn't set (e.g. non-Windows dev runs).
+_brand_icon_cache = {}
+
+
+def load_brand_icon(name, color, size=16):
+    key = (name, color, size)
+    cached = _brand_icon_cache.get(key)
+    if cached is not None:
+        return cached
+    fname = BRAND_ICON_FILES.get(name)
+    if not fname:
+        return None
+    path = resource_path(os.path.join(BRAND_ICON_DIR, fname))
+    if not os.path.isfile(path):
+        return None
+    try:
+        raw = Image.open(path).convert("RGBA")
+        render_size = size * 4
+        base = raw.resize((render_size, render_size), Image.LANCZOS, reducing_gap=3.0)
+        r, g, b = ImageColor.getrgb(color)
+        solid = Image.new("RGBA", base.size, (r, g, b, 255))
+        alpha = base.split()[3].point(lambda a: 255 if a >= 128 else 0)
+        alpha = alpha.filter(ImageFilter.GaussianBlur(render_size * 0.006))
+        solid.putalpha(alpha)
+        solid = solid.resize((size, size), Image.LANCZOS, reducing_gap=3.0)
+        img = ctk.CTkImage(light_image=solid, dark_image=solid, size=(size, size))
+    except Exception:
+        return None
+    _brand_icon_cache[key] = img
+    return img
+
 
 PROFILES_FILE = "profiles.json"
 
@@ -404,14 +355,6 @@ def save_profiles(profiles):
         pass
 
 
-# ---------------------------------------------------------------------------
-# Private (no-install) font loading
-# ---------------------------------------------------------------------------
-# Loads the bundled .ttf files as PRIVATE font resources: Windows makes them
-# usable by this process only, for as long as it's running. Nothing gets
-# written to the system font folder or registry, no admin rights needed, and
-# the fonts are automatically released when the app closes.
-
 FR_PRIVATE = 0x10
 _loaded_font_paths = []
 
@@ -435,13 +378,6 @@ def load_bundled_fonts():
             SMTO_ABORTIFHUNG = 0x0002
             SMTO_NORMAL = 0x0000
             result = ctypes.c_ulong()
-            # Plain SendMessageW to HWND_BROADCAST blocks until EVERY
-            # top-level window on the system finishes handling the
-            # message - if any window anywhere is slow or has a stuck
-            # message pump at that moment, this call can hang forever
-            # and take the whole app down with it before a window is
-            # ever shown. SendMessageTimeoutW enforces a hard cap so a
-            # stuck window elsewhere can never freeze this app.
             ctypes.windll.user32.SendMessageTimeoutW(
                 HWND_BROADCAST, WM_FONTCHANGE, 0, 0,
                 SMTO_ABORTIFHUNG | SMTO_NORMAL, 1000, ctypes.byref(result),
@@ -465,9 +401,6 @@ atexit.register(_unload_bundled_fonts)
 
 
 def resolve_fonts():
-    """Call once a Tk root exists. Falls back to a system font if the
-    bundled .ttf files didn't load for some reason (e.g. missing files),
-    so the app never crashes or silently renders in the wrong font."""
     global FONT_TITLE, FONT_BODY
     try:
         available = set(tkfont.families())
@@ -478,10 +411,6 @@ def resolve_fonts():
     if FONT_BODY not in available:
         FONT_BODY = FONT_BODY_FALLBACK
 
-
-# ---------------------------------------------------------------------------
-# Color helpers
-# ---------------------------------------------------------------------------
 
 def _hex_to_rgb(h):
     h = h.lstrip("#")
@@ -502,18 +431,7 @@ def _ease_out(t):
     return 1 - (1 - t) ** 2
 
 
-# ---------------------------------------------------------------------------
-# Theme-toggle icons (drawn, not loaded from files)
-# ---------------------------------------------------------------------------
-# Both are rendered at 4x then downsampled with LANCZOS for clean anti-
-# aliased edges, on a fully transparent canvas so they drop straight onto
-# whatever background is behind the button - no chip, no re-theming needed
-# later when the background changes.
-
 def _draw_moon_icon(size, rgb):
-    """Crescent moon - shown while in light mode, to switch to dark.
-    Colored with the current theme's text color so it's always legible
-    against the panel/background it's sitting on."""
     scale = 4
     s = size * scale
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -523,8 +441,6 @@ def _draw_moon_icon(size, rgb):
     cx, cy = s * 0.52, s * 0.50
     d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*rgb, 255))
 
-    # "Cut" a second, offset circle out of the first using a fully
-    # transparent fill - this carves out the crescent shape.
     cut_r = r * 0.86
     cut_cx = cx + r * 0.62
     cut_cy = cy - r * 0.30
@@ -537,9 +453,6 @@ def _draw_moon_icon(size, rgb):
 
 
 def _draw_glow_icon(size, rgb=(255, 255, 255)):
-    """Soft glowing circle - shown while in dark mode, to switch to
-    light. Reuses the same soft glow already used behind the header logo,
-    so it reads as part of the app's existing visual language."""
     scale = 4
     s = size * scale
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -561,28 +474,21 @@ def _draw_glow_icon(size, rgb=(255, 255, 255)):
 
 
 def _draw_broom_icon(size, rgb):
-    """Small broom icon for the 'clear profiles' control - a plain
-    handle plus a fanned row of bristles, drawn in the same thin-line
-    style as the theme-toggle icons above (no chip, transparent bg,
-    colored with the current theme's dim text color)."""
     scale = 4
     s = size * scale
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     lw = max(2, int(s * 0.09))
 
-    # Handle
     handle_top = (s * 0.30, s * 0.06)
     handle_bottom = (s * 0.60, s * 0.50)
     d.line([handle_top, handle_bottom], fill=(*rgb, 255), width=lw, joint="curve")
 
-    # Band where the handle meets the bristle head
     d.line(
         [(s * 0.42, s * 0.48), (s * 0.80, s * 0.48)],
         fill=(*rgb, 255), width=lw, joint="curve",
     )
 
-    # Fanned bristles splaying down and out from the band
     bristle_top_xs = [s * 0.46, s * 0.56, s * 0.66, s * 0.76]
     bristle_base_xs = [s * 0.30, s * 0.52, s * 0.74, s * 0.94]
     bristle_w = max(2, int(lw * 0.7))
@@ -596,9 +502,6 @@ def _draw_broom_icon(size, rgb):
 
 
 def _scale_alpha(img, factor):
-    """Scale only the alpha channel of an RGBA image by `factor` (0-1),
-    leaving every RGB value untouched. Used to fade the hover halo in/out
-    without any hue shift or color interpolation along the way."""
     if factor >= 0.999:
         return img
     if factor <= 0.001:
@@ -609,10 +512,6 @@ def _scale_alpha(img, factor):
 
 
 def _draw_halo(canvas_size, rgb, max_alpha=100):
-    """Soft radial glow used behind the theme-toggle icon on hover - a
-    'selected' halo. Built once at full opacity per icon color; faded in
-    and out afterward purely via _scale_alpha, so the color never shifts
-    mid-animation, only its strength."""
     scale = 3
     s = canvas_size * scale
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -632,19 +531,7 @@ def _draw_halo(canvas_size, rgb, max_alpha=100):
     return img.resize((canvas_size, canvas_size), Image.LANCZOS)
 
 
-# ---------------------------------------------------------------------------
-# Hover button
-# ---------------------------------------------------------------------------
-
 class HoverButton(ctk.CTkFrame):
-    # "Edge-lit ring" hover style (variant B from the button style
-    # preview): the fill stays close to flat, but a ring border sits
-    # anchored around the button at all times and lights up bright white
-    # on hover (plus the existing grow animation, which stands in for
-    # the CSS pulse/scale). The highlight lives on the border, not the
-    # fill. The idle ring defaults to a slightly darkened shade of the
-    # button's own fill color so every existing call site picks this up
-    # automatically without having to pass new colors in.
     RING_HOVER_COLOR = WHITE
 
     def __init__(self, master, text, command,
@@ -654,7 +541,7 @@ class HoverButton(ctk.CTkFrame):
                  text_color=BUTTON_TEXT, hover_text_color=BUTTON_TEXT,
                  blend_color=None,
                  border_width=2, ring_color=None, ring_hover_color=None,
-                 grow=6, steps=10, interval=12, **kwargs):
+                 grow=6, steps=10, interval=12, icon=None, icon_size=16, **kwargs):
         container_w = width + grow * 2 + 10
         container_h = height + grow * 2 + 10
         blend = blend_color if blend_color else "transparent"
@@ -677,14 +564,21 @@ class HoverButton(ctk.CTkFrame):
         self._hovering = False
         self._anim_job = None
 
+        self._icon_idle_img = load_brand_icon(icon, text_color, icon_size) if icon else None
+        self._icon_hover_img = load_brand_icon(icon, hover_text_color, icon_size) if icon else None
+
         font = font or FT(13)
-        self.btn = ctk.CTkButton(
-            self, text=text, command=command, width=width, height=height,
+        btn_kwargs = dict(
+            text=text, command=command, width=width, height=height,
             corner_radius=corner_radius, font=font,
             fg_color=fg_color, hover=False, text_color=text_color,
             border_width=border_width, border_color=self._ring,
-            **kwargs,
         )
+        if self._icon_idle_img:
+            btn_kwargs["image"] = self._icon_idle_img
+            btn_kwargs["compound"] = "left"
+        btn_kwargs.update(kwargs)
+        self.btn = ctk.CTkButton(self, **btn_kwargs)
         self.btn.place(relx=0.5, rely=0.5, anchor="center")
         self.btn.bind("<Enter>", self._on_enter)
         self.btn.bind("<Leave>", self._on_leave)
@@ -692,8 +586,6 @@ class HoverButton(ctk.CTkFrame):
         self.btn.bind("<ButtonRelease-1>", self._on_release)
 
     def set_blend_color(self, color):
-        """Update the container's matte background so it keeps blending
-        with a background that isn't static (e.g. an animated gradient)."""
         if color == self._blend_color:
             return
         self._blend_color = color
@@ -705,21 +597,25 @@ class HoverButton(ctk.CTkFrame):
     def _on_enter(self, _e=None):
         self._hovering = True
         self._set_ring(self._hover_ring)
+        if self._icon_hover_img:
+            try:
+                self.btn.configure(image=self._icon_hover_img)
+            except Exception:
+                pass
         self._animate(self._base_w + self._grow, self._base_h + self._grow,
                        self._hover_fg, self._hover_txt)
 
     def _on_leave(self, _e=None):
         self._hovering = False
         self._set_ring(self._ring)
+        if self._icon_idle_img:
+            try:
+                self.btn.configure(image=self._icon_idle_img)
+            except Exception:
+                pass
         self._animate(self._base_w, self._base_h, self._fg, self._txt)
 
     def _set_ring(self, color):
-        # Snapped instantly rather than folded into the width/height/fill
-        # animation loop below - lerping border_color on every one of the
-        # ~10 resize frames per hover (in, then out) was leaving stray
-        # leftover border outlines on-screen on some buttons once the
-        # animation finished. A single immediate border flip avoids that
-        # and still reads fine as the ring "lighting up".
         self._cur_ring = color
         try:
             self.btn.configure(border_color=color)
@@ -770,31 +666,7 @@ class HoverButton(ctk.CTkFrame):
         step()
 
 
-# ---------------------------------------------------------------------------
-# Icon toggle button (chip-free)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Icon toggle button (chip-free, with a real hover "select" effect)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Icon toggle button (chip-free, with a real hover "select" effect)
-# ---------------------------------------------------------------------------
-# Drawn directly onto the header's own Canvas via create_image/tag_bind -
-# the same technique already used for the logo, glow, and the clickable
-# credit line just above it. A CTkButton was tried first, but CTkButton
-# renders its image through an internal child Label that fully covers the
-# button; Tkinter's <Enter>/<Leave> only fire on whatever widget is
-# directly under the cursor, so those events landed on that hidden child
-# instead of the button we bound - the animation never ran. A single
-# canvas item has no children to steal the event, so hover is reliable.
-
 class IconToggleAnimator:
-    """Owns the hover animation state for a canvas-drawn toggle icon:
-    zooms the icon up and fades in a soft halo behind it. Both effects
-    are pure resize / alpha-channel scaling - never color blending - so
-    nothing shifts hue or flickers mid-animation."""
 
     def __init__(self, canvas, item_id, icon_builder, icon_rgb,
                  size=44, hover_grow=12, halo_alpha=110,
@@ -807,11 +679,8 @@ class IconToggleAnimator:
         self._steps, self._interval = steps, interval
         self._t = 0.0
         self._anim_job = None
-        self._photo = None  # keep a reference alive - Tk drops GC'd images
+        self._photo = None
 
-        # Both rendered once at the larger (hover) resolution - every
-        # animation frame just resizes/alpha-scales these masters rather
-        # than redrawing, so frames stay cheap and consistent.
         self._icon_master = icon_builder(self._hover_icon, icon_rgb)
         self._halo_master = _draw_halo(self._canvas_size, icon_rgb, max_alpha=halo_alpha)
 
@@ -863,18 +732,12 @@ class IconToggleAnimator:
             pass
 
 
-# ---------------------------------------------------------------------------
-# Main app
-# ---------------------------------------------------------------------------
-
 WIN_W, WIN_H = 704, 900
 
 HEADER_TOP = 36
 LOGO_SIZE = 66
 HEADER_BLOCK_HEIGHT = 260
 
-# Scrollbar auto-hide: thin + tucked to the edge at rest, full size on
-# hover (see _wire_autohide_scrollbar).
 SCROLLBAR_IDLE_WIDTH = 4
 SCROLLBAR_HOVER_WIDTH = 16
 
@@ -887,8 +750,6 @@ class ResSwitcherApp(ctk.CTk):
 
         self.mode = "dark"
 
-        # Now that a Tk root exists, confirm the bundled fonts actually
-        # loaded; fall back cleanly if not.
         print("SnapRes:   resolving fonts...", flush=True)
         resolve_fonts()
         print("SnapRes:   fonts resolved.", flush=True)
@@ -903,13 +764,11 @@ class ResSwitcherApp(ctk.CTk):
         self._app_icon_photo = None
         self._clear_icon_photo = None
         self._content_frame = None
+        self._version_label = None
+        self._version_bar = None
 
-        # Saved custom-resolution profiles - loaded from disk so they
-        # survive an app restart. "Clear" (or deleting individual ones)
-        # writes the change straight back out - see save_profiles().
         self.profiles = load_profiles()
 
-        # App icon
         print("SnapRes:   loading icon...", flush=True)
         try:
             self.iconbitmap(resource_path(ICON_FILE))
@@ -933,19 +792,13 @@ class ResSwitcherApp(ctk.CTk):
     def C(self):
         return THEMES[self.mode]
 
-    # -- theme --------------------------------------------------------------
 
     def _toggle_theme(self):
         self.mode = "dark" if self.mode == "light" else "light"
         ctk.set_appearance_mode(self.mode)
 
-        # Close the clear-profiles overlay too - it now lives directly on
-        # the root window (see _open_clear_popup) rather than inside the
-        # content frame, so it wouldn't get swept away by the content
-        # frame rebuild below on its own.
         self._close_clear_popup()
 
-        # Close open popups
         for win in list(self._popups.values()):
             try:
                 if win.winfo_exists():
@@ -967,19 +820,30 @@ class ResSwitcherApp(ctk.CTk):
                 pass
             self._content_frame = None
 
+        self._build_version_label()
         self._build_content_frame()
 
-    # -- layout -----------------------------------------------------------
+    def _build_version_label(self):
+        C = self.C
+        if self._version_label is None:
+            bar = ctk.CTkFrame(self, fg_color="transparent", height=22)
+            bar.pack(side="bottom", fill="x")
+            bar.pack_propagate(False)
+            label = ctk.CTkLabel(
+                bar, text=f"v{VERSION}", font=FB(10), text_color=C["text_dimmer"],
+            )
+            label.pack(side="left", padx=12, pady=(0, 4))
+            self._version_bar = bar
+            self._version_label = label
+        else:
+            self._version_label.configure(text=f"v{VERSION}", text_color=C["text_dimmer"])
+
 
     def _center(self):
         self.update_idletasks()
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
 
-        # Leave room for the taskbar / window chrome so the window never
-        # opens taller/wider than what's actually usable on screen. The
-        # content lives inside a CTkScrollableFrame, so shrinking the
-        # window just makes it scroll instead of clipping.
         margin_w, margin_h = 40, 90
 
         win_w = min(WIN_W, max(360, screen_w - margin_w))
@@ -1005,10 +869,6 @@ class ResSwitcherApp(ctk.CTk):
         c.pack(fill="x")
         self._header_canvas = c
 
-        # Negative size = pixels, not points. Points auto-scale with Windows
-        # display zoom (that's what was causing the text to balloon and
-        # collide at 125%/150%/172% zoom); pixels stay a fixed, predictable
-        # size no matter the zoom level, matching the rest of the UI.
         title_font = tkfont.Font(family=FONT_TITLE, size=-38)
         credit_font = tkfont.Font(family=FONT_TITLE, size=-16)
         subtitle_font = tkfont.Font(family=FONT_BODY, size=-13)
@@ -1031,7 +891,6 @@ class ResSwitcherApp(ctk.CTk):
         title_y = HEADER_TOP + LOGO_SIZE * 0.30
         credit_y = title_y + 50
 
-        # Glow
         glow_w, glow_h = int(group_w + 130), 150
         glow_img = Image.new("RGBA", (glow_w, glow_h), (0, 0, 0, 0))
         gd = ImageDraw.Draw(glow_img)
@@ -1045,7 +904,6 @@ class ResSwitcherApp(ctk.CTk):
             WIN_W / 2, logo_cy + 6, image=self._glow_photo, anchor="center", tags="header",
         )
 
-        # Logo
         logo_file = LOGO_MAIN_FILE if self.mode == "light" else LOGO_DARK_FILE
         try:
             pil_logo = Image.open(resource_path(logo_file)).convert("RGBA")
@@ -1055,7 +913,6 @@ class ResSwitcherApp(ctk.CTk):
         except Exception:
             pass
 
-        # Title
         c.create_text(
             text_x + 1, title_y + 1, text=title_text, anchor="w",
             font=title_font, fill=C["border"], tags="header",
@@ -1065,7 +922,6 @@ class ResSwitcherApp(ctk.CTk):
             font=title_font, fill=C["text_main"], tags="header",
         )
 
-        # Credit line
         credit_id = c.create_text(
             text_x, credit_y, text=credit_text, anchor="w",
             font=credit_font, fill=C["text_dim"], tags="header",
@@ -1074,14 +930,12 @@ class ResSwitcherApp(ctk.CTk):
         c.tag_bind(credit_id, "<Enter>", lambda e: c.config(cursor="hand2"))
         c.tag_bind(credit_id, "<Leave>", lambda e: c.config(cursor=""))
 
-        # Subtitle
         subtitle_y = HEADER_TOP + LOGO_SIZE + 32
         c.create_text(
             WIN_W / 2, subtitle_y, text=subtitle_text, anchor="center",
             font=subtitle_font, fill=C["text_dim"], tags="header",
         )
 
-        # Setup button
         setup_label_y = subtitle_y + 42
         c.create_text(
             WIN_W / 2, setup_label_y, text="BEFORE YOU SWITCH",
@@ -1097,11 +951,6 @@ class ResSwitcherApp(ctk.CTk):
         )
         c.create_window(WIN_W / 2, setup_label_y + 46, window=setup_btn, anchor="center", tags="header")
 
-        # Theme toggle - a moon while in light mode (switches to dark), a
-        # glowing circle while in dark mode (switches to light). Drawn
-        # straight on this canvas (like the logo/glow above), so hover
-        # zoom + halo glow reliably fires instead of getting swallowed by
-        # a child widget.
         icon_size = 40
         if self.mode == "light":
             icon_builder = _draw_moon_icon
@@ -1115,7 +964,7 @@ class ResSwitcherApp(ctk.CTk):
             c, toggle_item, icon_builder, icon_rgb,
             size=icon_size, hover_grow=12, halo_alpha=110,
         )
-        self._theme_toggle_anim = toggle_anim  # keep alive - holds the PhotoImage refs
+        self._theme_toggle_anim = toggle_anim
 
         def _toggle_enter(_e):
             c.config(cursor="hand2")
@@ -1141,21 +990,9 @@ class ResSwitcherApp(ctk.CTk):
         frame.pack(fill="both", expand=True)
         self._content_frame = frame
 
-        # Auto-hiding scrollbar: sits thin against the edge at rest, and
-        # only grows to full size while the mouse is actually over it
-        # (or the thumb is being actively dragged). Keeps it out of the
-        # way of the main UI without removing the ability to scroll or
-        # grab it.
         self._scrollbar = getattr(frame, "_scrollbar", None)
         self._wire_autohide_scrollbar(self._scrollbar)
 
-        # Everything below is built inside a fixed-design-width "page"
-        # column, which sits in the middle of a 3-column grid with equal
-        # weight spacer columns on either side. That keeps the whole UI
-        # locked to its intended width and perfectly centered no matter
-        # how wide the window gets (maximized, ultrawide, etc.) instead of
-        # panels stretching edge-to-edge while their content stays drawn
-        # at the old, narrower center point.
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_columnconfigure(1, weight=0)
         frame.grid_columnconfigure(2, weight=1)
@@ -1192,10 +1029,6 @@ class ResSwitcherApp(ctk.CTk):
         return panel
 
     def _fill_res_grid(self, grid, res_list, cols, command=None):
-        """Places resolution buttons into `grid` in row-major order, and
-        if the last row is incomplete, centers it instead of hugging the
-        left edge - that's what puts a lone 7th button (or any other
-        leftover count) in the middle column instead of column 0."""
         C = self.C
         total = len(res_list)
         full_rows, remainder = divmod(total, cols)
@@ -1239,9 +1072,6 @@ class ResSwitcherApp(ctk.CTk):
         row = ctk.CTkFrame(panel, fg_color="transparent")
         row.pack(padx=22, pady=(0, 20), fill="x")
 
-        # Kept so the new custom-apply status panel (see
-        # _build_custom_status) knows exactly where to insert itself -
-        # directly above this panel, not up at the top of the page.
         self._custom_row_panel = panel
 
         self.custom_entry = ctk.CTkEntry(
@@ -1261,9 +1091,6 @@ class ResSwitcherApp(ctk.CTk):
             blend_color=C["panel"], grow=4,
         ).pack(side="left", padx=(12, 0))
 
-        # Only shown once the box has something typed in it - see
-        # _on_custom_entry_changed. Built now (unpacked) so it's ready
-        # to show/hide without rebuilding anything.
         self.save_profile_btn = HoverButton(
             row, text="Save Profile", command=self.save_profile,
             width=118, height=48, corner_radius=14, font=FT(13),
@@ -1273,21 +1100,12 @@ class ResSwitcherApp(ctk.CTk):
         )
 
     def _build_custom_status(self, parent):
-        # A separate status panel from self.status_panel, used ONLY for
-        # results of the custom-resolution "Apply" button. It lives
-        # right above the CUSTOM RESOLUTION panel (inserted with
-        # before=self._custom_row_panel below) instead of up at the top
-        # of the page with the preset-button status, so feedback about
-        # a custom apply shows right next to the box the person is
-        # actually looking at.
         C = self.C
         self._custom_status_after_id = None
         self.custom_status_panel = ctk.CTkFrame(
             parent, fg_color=C["panel"], corner_radius=16,
             border_width=1, border_color=C["border"],
         )
-        # Not packed yet - only appears once there's a custom-apply
-        # result (success or error) to show.
 
         self.custom_status_var = ctk.StringVar(value="")
         self.custom_status_label = ctk.CTkLabel(
@@ -1344,8 +1162,6 @@ class ResSwitcherApp(ctk.CTk):
             parent, fg_color=C["panel"], corner_radius=16,
             border_width=1, border_color=C["status_bad"],
         )
-        # Not packed yet - only appears when the custom-resolution box
-        # has something invalid in it.
 
         self.custom_error_var = ctk.StringVar(value="")
         self.custom_error_label = ctk.CTkLabel(
@@ -1390,7 +1206,6 @@ class ResSwitcherApp(ctk.CTk):
             border_width=1, border_color=C["border"],
         )
         self._profiles_panel = panel
-        # Not packed yet - only shown once at least one profile exists.
 
         header_row = ctk.CTkFrame(panel, fg_color="transparent")
         header_row.pack(fill="x", padx=22, pady=(20, 12))
@@ -1417,7 +1232,6 @@ class ResSwitcherApp(ctk.CTk):
         if self.profiles:
             panel.pack(padx=26, pady=(0, 18), fill="x")
 
-    # -- profiles: normal-mode header (title + "Clear") ------------------
 
     def _render_profiles_header_right(self):
         C = self.C
@@ -1453,9 +1267,6 @@ class ResSwitcherApp(ctk.CTk):
                 blend_color=C["panel"], grow=3,
             ).pack(side="left")
         else:
-            # Small, deliberately understated "clear" control - a broom
-            # icon + short label, not a full button chip, so it doesn't
-            # compete with the profile buttons below it.
             clear_row = ctk.CTkFrame(
                 self._profiles_header_right, fg_color="transparent", cursor="hand2",
             )
@@ -1487,39 +1298,6 @@ class ResSwitcherApp(ctk.CTk):
         n = len(self._selected_profile_keys)
         return f"{n} selected" if n else "Tap profiles to select"
 
-    # -- profiles: the small in-app "Clear" popup -------------------------
-    # A plain CTkFrame placed as an overlay directly on the root window
-    # (not nested inside the profiles panel, and not a separate OS
-    # window) with two choices: pick specific profiles to delete, or
-    # wipe all of them. Living on the root window means it isn't bound
-    # by the profiles panel's own height - that's what was clipping the
-    # second option button off before. It's positioned right next to the
-    # actual "Clear" control (see _clear_row) so it still reads as
-    # belonging to that button instead of appearing off on its own. It
-    # only ever exists (and only ever takes up space) while it's open.
-    #
-    # Position is decided once, right when it opens, and then left
-    # alone - it does not keep following the "Clear" button around if
-    # the person scrolls while it's open. An earlier version re-tracked
-    # the anchor's position on a fast timer so the popup stayed glued to
-    # the button through a scroll, but in practice that constant
-    # re-placing is what made it feel like it was drifting/jittering
-    # around instead of just sitting there normally. Picking a good spot
-    # once and holding it reads as far more "solid".
-    #
-    # This is deliberately just one CTkFrame ("card") with everything
-    # else packed *inside* it as normal children - title row, close X,
-    # both buttons. Two earlier versions tried to get fancy here (first
-    # a baked screenshot-blend backdrop for the shadow/corners, which
-    # glitched into a solid black card when the grab timing was off;
-    # then a from-scratch alpha-rendered image with the same idea) and
-    # both added a real image/Label layer that had to be kept in sync
-    # with the card by hand every animation tick - more moving parts
-    # than the popup needs. Because the title/buttons are real children
-    # of "card" now, moving the card moves everything with it for free,
-    # the same corner_radius + fg_color pattern already used by every
-    # other panel in this app (see the profile cards above) - so it
-    # behaves exactly as predictably as those do.
 
     def _toggle_clear_popup(self):
         if self._clear_popup is not None and self._clear_popup.winfo_exists():
@@ -1527,9 +1305,6 @@ class ResSwitcherApp(ctk.CTk):
             return
         self._open_clear_popup()
 
-    # Fixed layout constant for the popup card - width only. Height is
-    # measured from the real packed content each time the popup opens
-    # (see _open_clear_popup), not guessed up front.
     _CLEAR_CARD_W = 204
 
     def _clear_popup_xy(self, card_h=None):
@@ -1544,25 +1319,13 @@ class ResSwitcherApp(ctk.CTk):
 
         x0 = max(0, min(anchor_right - card_w, max(0, self.winfo_width() - card_w)))
 
-        # Default: open just under the "Clear" control, same as before.
         y0 = anchor_bottom + 8
         if card_h is not None:
-            # Once we actually know how tall the card is, make sure it
-            # never runs off the bottom of the window - that's what was
-            # clipping it before, since it always opened downward no
-            # matter how close to the bottom edge the "Clear" button
-            # (and this popup's anchor) had scrolled.
             if y0 + card_h > win_h:
                 y0_above = anchor_top - card_h - 8
                 if y0_above >= 0:
-                    # Flip to open upward, above the "Clear" control,
-                    # since there's more room that way.
                     y0 = y0_above
                 else:
-                    # Neither side has enough clearance (a very short
-                    # window) - clamp so the whole card is at least
-                    # fully visible, even if that means sitting closer
-                    # to the control than usual.
                     y0 = max(0, win_h - card_h)
         return x0, y0
 
@@ -1577,8 +1340,6 @@ class ResSwitcherApp(ctk.CTk):
             fg_color=C["panel"], bg_color=C["panel"],
             border_width=1, border_color=C["border"],
         )
-        # Not placed on screen yet - see the note below on why we wait
-        # until the real height is known before showing it anywhere.
 
         top_row = ctk.CTkFrame(card, fg_color="transparent")
         top_row.pack(side="top", fill="x", padx=14, pady=(8, 0))
@@ -1609,24 +1370,6 @@ class ResSwitcherApp(ctk.CTk):
         )
         btn2.pack(side="top", pady=(4, 8))
 
-        # The card was built with only a fixed *width* above - its height
-        # was left to size itself naturally around the title row and both
-        # buttons we just packed into it. Now that everything's in place,
-        # lock both dimensions to that real, measured size. Locking it
-        # (rather than leaving it free to keep auto-resizing) is what
-        # keeps the two buttons the same size and the bottom corners
-        # rounded: before, the height was a hand-guessed number that
-        # didn't quite match how tall the real content actually was, so
-        # the second button spilled a few pixels past the bottom edge of
-        # the frame - past where the rounding is drawn - which is why it
-        # looked squared-off and oversized next to the first button.
-        #
-        # We also use that real height to work out where to put it: this
-        # is why the card wasn't placed on screen until now - placing it
-        # first (using a guessed spot) and only *then* finding out it's
-        # taller than expected was what let it end up clipped off the
-        # bottom of the window before. That position is picked once,
-        # here, and then held - see the class comment above.
         self.update_idletasks()
         card_h = card.winfo_reqheight()
         card.configure(height=card_h)
@@ -1637,14 +1380,6 @@ class ResSwitcherApp(ctk.CTk):
         self._clear_popup = card
         self._clear_popup_parts = [card]
 
-        # Close automatically the moment the page actually scrolls -
-        # this popup isn't glued to the "Clear" button (see the class
-        # comment above), so once the page moves, staying open would
-        # mean it's now floating next to whatever happens to be there
-        # instead of the button it belongs to. Checked against the
-        # scrollable content's own scroll position on a light timer
-        # rather than trying to catch every possible way of scrolling
-        # (wheel, dragging the scrollbar, keyboard) individually.
         try:
             self._clear_popup_scroll_at_open = self._content_frame._parent_canvas.yview()
         except Exception:
@@ -1684,7 +1419,6 @@ class ResSwitcherApp(ctk.CTk):
         self._close_clear_popup()
         self.clear_profiles()
 
-    # -- profiles: select-to-delete mode -----------------------------------
 
     def _enter_select_mode(self):
         self._close_clear_popup()
@@ -1720,7 +1454,6 @@ class ResSwitcherApp(ctk.CTk):
         self._render_profiles_header_right()
         self._refresh_profiles_panel()
 
-    # -- profiles: grid rendering -------------------------------------------
 
     def _render_profile_buttons(self):
         for child in self._profiles_grid.winfo_children():
@@ -1779,7 +1512,6 @@ class ResSwitcherApp(ctk.CTk):
             parent, fg_color=C["panel"], corner_radius=16,
             border_width=1, border_color=C["border"],
         )
-        # Not packed yet — it only appears when there's something to show.
 
         self.status_var = ctk.StringVar(value="")
         self.status_label = ctk.CTkLabel(
@@ -1839,26 +1571,18 @@ class ResSwitcherApp(ctk.CTk):
                 blend_color=C["bg"], grow=5,
             ).pack(side="left", padx=6)
 
-    # -- actions --------------------------------------------------------
 
     def apply_resolution(self, width, height):
         ok, msg = set_resolution(width, height)
         self._show_status(msg, ok)
 
     def apply_profile(self, width, height):
-        # Saved profiles are just stored custom resolutions, so clicking
-        # one should report through the same status panel as typing it
-        # in and hitting Apply - right above the CUSTOM RESOLUTION box -
-        # not the top status panel used by the true-stretch/revert
-        # presets.
         ok, msg = set_resolution(width, height)
         self._show_custom_status(msg, ok)
 
     def apply_custom(self):
         text = self.custom_entry.get().strip()
 
-        # Covers "1080" (only one number), "1080x", garbage text, etc. -
-        # anything that isn't two full numbers always lands here now.
         match = re.match(r"^(\d{2,5})\s*[x, ]\s*(\d{2,5})$", text)
         if not match:
             self._show_custom_status(
@@ -1868,8 +1592,6 @@ class ResSwitcherApp(ctk.CTk):
 
         width, height = int(match.group(1)), int(match.group(2))
 
-        # A "resolution" like 10x10 parses fine but isn't real - catch
-        # it before it ever reaches the Windows display API.
         if width < 100 or height < 100:
             self._show_custom_status(
                 "ERROR! That resolution is too small to be valid.", ok=False,
@@ -1924,7 +1646,6 @@ class ResSwitcherApp(ctk.CTk):
         save_profiles(self.profiles)
         self._refresh_profiles_panel()
 
-    # -- popups -----------------------------------------------------------
 
     def _open_singleton(self, key, build_fn):
         existing = self._popups.get(key)
@@ -1936,19 +1657,6 @@ class ResSwitcherApp(ctk.CTk):
         self._popups[key] = win
 
     def _wire_autohide_scrollbar(self, scrollbar):
-        """Wires up the 'thin at rest, full size on hover' scrollbar
-        behavior onto any CTkScrollableFrame's internal scrollbar - used
-        for both the main window and popups like Setup. State lives in
-        the closure rather than on self, so this can be reused for any
-        number of scrollbars without them stepping on each other.
-
-        Also tracks whether the thumb is actively being dragged: while
-        the mouse button is held down on it, a drag can carry the
-        cursor off the (thin) hit box, which used to fire a premature
-        <Leave> and shrink the bar back down mid-scroll. It now stays
-        expanded for as long as the button is held, and only re-checks
-        whether to shrink once it's actually released.
-        """
         if scrollbar is None:
             return
         state = {"w": SCROLLBAR_IDLE_WIDTH, "job": None, "held": False, "hover": False}
@@ -2006,9 +1714,6 @@ class ResSwitcherApp(ctk.CTk):
 
         scrollbar.bind("<Enter>", on_enter)
         scrollbar.bind("<Leave>", on_leave)
-        # add="+" - the scrollbar already has its own press/release
-        # bindings for the actual drag-to-scroll behavior; this must not
-        # replace those, only piggyback on them.
         scrollbar.bind("<ButtonPress-1>", on_press, add="+")
         scrollbar.bind("<ButtonRelease-1>", on_release, add="+")
 
@@ -2114,17 +1819,25 @@ class ResSwitcherApp(ctk.CTk):
             links_row.pack(pady=(18, 6), padx=24, anchor="w")
             HoverButton(
                 links_row, text="YouTube", command=lambda: webbrowser.open(YOUTUBE_URL),
-                width=110, height=40, corner_radius=12, font=FT(12),
+                width=124, height=40, corner_radius=12, font=FT(12),
                 fg_color=C["btn_idle"], hover_color=C["btn_hover"],
                 text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
-                blend_color=C["bg"], grow=4,
+                blend_color=C["bg"], grow=4, icon="youtube", icon_size=18,
+            ).pack(side="left", padx=(0, 10))
+            HoverButton(
+                links_row, text="Discord", command=lambda: webbrowser.open(DISCORD_URL),
+                width=124, height=40, corner_radius=12, font=FT(12),
+                fg_color=C["btn_idle"], hover_color=C["btn_hover"],
+                text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
+                blend_color=C["bg"], grow=4, icon="discord", icon_size=18,
             ).pack(side="left", padx=(0, 10))
             HoverButton(
                 links_row, text="GitHub", command=lambda: webbrowser.open(GITHUB_URL),
-                width=110, height=40, corner_radius=12, font=FT(12),
+                width=124, height=40, corner_radius=12, font=FT(12),
                 fg_color=C["btn_idle"], hover_color=C["btn_hover"],
                 text_color=C["btn_text"], hover_text_color=C["btn_hover_text"],
-                blend_color=C["bg"], grow=4,
+                blend_color=C["bg"], grow=4, icon="github", icon_size=18,
+                border_width=0,
             ).pack(side="left")
 
             support = ctk.CTkFrame(
@@ -2152,9 +1865,6 @@ class ResSwitcherApp(ctk.CTk):
 
 
 def _acquire_single_instance_lock():
-    """Prevent duplicate background launches. If SnapRes is already
-    running, silently exit instead of spawning another invisible process
-    that piles up in Task Manager alongside the first one."""
     ERROR_ALREADY_EXISTS = 183
     kernel32 = ctypes.windll.kernel32
     kernel32.CreateMutexW(None, False, "Global\\SnapRes_bku_single_instance")
@@ -2164,10 +1874,6 @@ def _acquire_single_instance_lock():
 
 
 def _log_startup_error(exc):
-    """--noconsole swallows stderr, so an uncaught exception here would
-    normally vanish with zero trace - the process could exit (or in some
-    environments hang) with no visible sign of what happened. Write it
-    somewhere findable and show it, instead of failing silently."""
     import traceback
     log_path = os.path.join(os.environ.get("TEMP", "."), "SnapRes_error.log")
     try:
@@ -2183,6 +1889,8 @@ def _log_startup_error(exc):
     except Exception:
         pass
 
+
+VERSION = "1.0.6"
 
 if __name__ == "__main__":
     if sys.platform != "win32":
@@ -2201,10 +1909,6 @@ if __name__ == "__main__":
         app = ResSwitcherApp()
         print("SnapRes: window created, bringing to foreground...", flush=True)
 
-        # Force the window to the foreground explicitly rather than
-        # trusting Windows to give a freshly-created window focus - on a
-        # busy system a new top-level can otherwise finish building
-        # completely invisible/unfocused behind everything else.
         app.update_idletasks()
         app.deiconify()
         app.lift()

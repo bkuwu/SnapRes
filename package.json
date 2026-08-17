@@ -1,0 +1,36 @@
+{
+  "name": "snapres",
+  "version": "2.0.0",
+  "description": "Instant resolution switching for stretched res",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.bku.snapres",
+    "productName": "SnapRes",
+    "files": [
+      "main.js",
+      "preload.js",
+      "native/**/*",
+      "app/**/*"
+    ],
+    "asar": false,
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "allowScripts": {
+    "electron@31.7.7": true
+  }
+}

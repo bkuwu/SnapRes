@@ -48,7 +48,7 @@
   --status-bad:#8a2f2f; --status-bad-soft:rgba(138,47,47,.14);
 }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-html,body{ height:100%; }
+html,body{ height:100%; background:#0F0F0F; }
 body{
   font-family:var(--font-body); color:var(--text-1);
   overflow:hidden; position:relative;
@@ -293,9 +293,77 @@ h1.title{ font-family:var(--font-display); font-weight:900; font-size:34px; lett
 .footer{ animation:rise-in .6s var(--ease) both; animation-delay:.5s; }
 
 .snap-flash{ position:fixed; inset:0; z-index:999; pointer-events:none; border-radius:50%; background:var(--accent); mix-blend-mode:var(--flash-blend, screen); }
+
+#splashOverlay{
+  position:fixed; inset:0; z-index:1000;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px;
+  background:var(--window-bg);
+  backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+  opacity:1; pointer-events:none;
+  transition:opacity .85s var(--ease), backdrop-filter .85s var(--ease), -webkit-backdrop-filter .85s var(--ease);
+}
+#splashOverlay.hide{ opacity:0; backdrop-filter:blur(0px); -webkit-backdrop-filter:blur(0px); }
+#splashOverlay.done{ display:none; }
+
+.splash-icon-wrap{
+  position:relative; width:160px; height:160px; display:flex; align-items:center; justify-content:center;
+  opacity:0; transform:scale(.4);
+  animation:splash-icon-in .9s var(--ease-snap) .2s both;
+}
+.splash-icon-wrap::before{ content:''; position:absolute; inset:-36px; background:radial-gradient(circle, var(--glow), transparent 70%); filter:blur(4px); border-radius:50%; }
+.splash-icon-wrap img{ position:absolute; width:126px; height:126px; object-fit:contain; transition:opacity .35s var(--ease); }
+.splash-icon-wrap .logo-dark{ opacity:0; }
+.splash-icon-wrap .logo-light{ opacity:1; }
+[data-theme="dark"] .splash-icon-wrap .logo-dark{ opacity:1; }
+[data-theme="dark"] .splash-icon-wrap .logo-light{ opacity:0; }
+.splash-text{
+  font-family:var(--font-body); font-weight:300; font-size:30px; letter-spacing:2.5px;
+  text-transform:uppercase; color:var(--text-1);
+  opacity:0; transform:scale(.7);
+  animation:splash-text-in .7s var(--ease-snap) .5s both;
+}
+.splash-tagline{
+  font-size:13px; color:var(--text-2); max-width:320px; line-height:1.5; text-align:center; margin-top:-8px;
+  opacity:0;
+  animation:splash-fade-in .6s var(--ease) .8s both;
+}
+.splash-credit{
+  position:absolute; left:50%; bottom:40px; translate:-50% 0;
+  font-family:var(--font-display); font-weight:600; font-size:12px; color:var(--text-3);
+  opacity:0;
+  animation:splash-fade-in .6s var(--ease) 1s both;
+}
+@keyframes splash-icon-in{
+  0%{ opacity:0; transform:scale(.4); }
+  60%{ opacity:1; transform:scale(1.12); }
+  100%{ opacity:1; transform:scale(1); }
+}
+@keyframes splash-text-in{
+  0%{ opacity:0; transform:scale(.7); }
+  60%{ opacity:1; transform:scale(1.06); }
+  100%{ opacity:1; transform:scale(1); }
+}
+@keyframes splash-fade-in{
+  0%{ opacity:0; transform:translateY(4px); }
+  100%{ opacity:1; transform:translateY(0); }
+}
+@media (prefers-reduced-motion: reduce){
+  .splash-icon-wrap, .splash-text, .splash-tagline, .splash-credit{ animation:none !important; opacity:1 !important; transform:none !important; }
+  .splash-credit{ translate:-50% 0; }
+}
 </style>
 </head>
 <body>
+
+<div id="splashOverlay">
+  <div class="splash-icon-wrap">
+    <img class="logo-light" src="assets/logo/Logo_Main.png" alt="">
+    <img class="logo-dark" src="assets/logo/Logo_Dark.png" alt="">
+  </div>
+  <div class="splash-text">SnapRes</div>
+  <div class="splash-tagline">Instant Resolution Switching For Stretched Res</div>
+  <div class="splash-credit">Made by bku</div>
+</div>
 
 <div id="ambientBg"></div>
 
@@ -431,6 +499,18 @@ If you've got questions, suggestions, or just want to see what else is in the wo
 </div>
 
 <script>
+(function(){
+  const splash = document.getElementById('splashOverlay');
+  if (!splash) return;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const holdMs = reduceMotion ? 350 : 1900;
+  const fadeMs = reduceMotion ? 0 : 850;
+  setTimeout(()=>{
+    splash.classList.add('hide');
+    setTimeout(()=> splash.classList.add('done'), fadeMs);
+  }, holdMs);
+})();
+
 const bridge = window.snapres || null;
 if (!bridge) console.info('[SnapRes] No native bridge found on window.snapres, running in demo mode. Buttons will animate but will not touch your actual display.');
 const demoState = { driver: 'enabled' };
@@ -444,7 +524,7 @@ async function callBridge(fn, fallback){
   }
 }
 const Bridge = {
-  applyResolution:(w,h)=> callBridge(()=> bridge?.applyResolution ? bridge.applyResolution(w,h) : wait(250).then(()=>true), false),
+  applyResolution:(w,h)=> callBridge(()=> bridge?.applyResolution ? bridge.applyResolution(w,h) : Promise.resolve(true), false),
   checkDriverStatus:()=> callBridge(()=> bridge?.checkDriverStatus ? bridge.checkDriverStatus() : wait(450).then(()=>demoState.driver), 'not_found'),
   disableDriver:()=> callBridge(()=> bridge?.disableDriver ? bridge.disableDriver() : wait(800).then(()=>{ demoState.driver='disabled'; return 'disabled'; }), demoState.driver),
   enableDriver:()=> callBridge(()=> bridge?.enableDriver ? bridge.enableDriver() : wait(800).then(()=>{ demoState.driver='enabled'; return 'enabled'; }), demoState.driver)
@@ -523,15 +603,12 @@ function clearActive(){
   document.querySelectorAll('#stretchGrid .res-btn, #revertGrid .res-btn').forEach(b=>b.classList.remove('active'));
 }
 
-const SNAP_ANIM_MS = 550; // matches the longest res-btn.snap keyframe duration (label-snap-fade / snap-ring)
-
 // Shared apply flow used by every "apply a resolution" entry point (main grid, custom box, profiles).
 // - Failure: reveal the error message the instant we know, no animation.
-// - Success: play the snap animation first, and only reveal the "applied" state + message once
-//   the animation has actually finished AND the OS call has actually confirmed the switch.
+// - Success: fire the snap animation and reveal the "applied" state + message in the same instant,
+//   as soon as the OS call has actually confirmed the switch. No artificial wait in either case.
 async function applyAndReveal({ getResult, btn, statusBox, statusText, w, h, onSuccess }){
-  const resultPromise = getResult();
-  const [ok, msg] = await resultPromise;
+  const [ok, msg] = await getResult();
 
   if (!ok){
     flashMsg(statusBox, statusText, msg, false);
@@ -542,8 +619,6 @@ async function applyAndReveal({ getResult, btn, statusBox, statusText, w, h, onS
   if (btn){
     btn.classList.remove('snap'); void btn.offsetWidth; btn.classList.add('snap');
   }
-  await wait(SNAP_ANIM_MS);
-
   if (onSuccess) onSuccess();
   flashMsg(statusBox, statusText, msg, true);
   showToast(`Switched to ${w}x${h}`);

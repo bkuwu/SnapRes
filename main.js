@@ -24,6 +24,7 @@ function createWindow() {
     minWidth: 460,
     minHeight: 560,
     backgroundColor: '#08090b',
+    show: false,
     icon: path.join(__dirname, 'build/icon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
@@ -35,13 +36,25 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'app/index.html'));
 
-  mainWindow.once('ready-to-show', () => {
+  let readyToShow = false;
+  let contentLoaded = false;
+  function revealWhenReady() {
+    if (!readyToShow || !contentLoaded) return;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.show();
     mainWindow.setAlwaysOnTop(true);
     mainWindow.focus();
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(false);
     }, 250);
+  }
+  mainWindow.once('ready-to-show', () => {
+    readyToShow = true;
+    revealWhenReady();
+  });
+  mainWindow.webContents.once('did-finish-load', () => {
+    contentLoaded = true;
+    revealWhenReady();
   });
 }
 
